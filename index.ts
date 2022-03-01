@@ -2,13 +2,7 @@
 import { prompt } from 'inquirer';
 import fetch from 'node-fetch';
 
-const holidays = [
-  '2020-12-08',
-  '2020-11-01',
-  '2020-10-26',
-  '2020-08-15',
-  '2020-06-11',
-];
+const holidays = ['2022-02-15'];
 
 const nextDay = (date: Date): Date => {
   const nextDay = new Date(date);
@@ -20,8 +14,8 @@ const addTime = (
   token: string,
   userId: number,
   taskId: number,
-  start: Date,
-  end: Date,
+  start: string,
+  end: string,
 ) =>
   fetch('https://go.timetac.com/imcgmbh/userapi/v3/timeTrackings/create/', {
     headers: {
@@ -43,15 +37,7 @@ const addTime = (
       'tt-analytics-grid': 'calendar',
       'x-requested-with': 'XMLHttpRequest',
     },
-    body: `{"0":{"user_id":${userId},"task_id":${taskId},"start_time_timezone":"Europe/Vienna","end_time_timezone":"Europe/Vienna","start_time":"${start
-      .toISOString()
-      .slice(0, 10)} ${start
-      .toISOString()
-      .slice(11, 19)}","end_time":"${end
-      .toISOString()
-      .slice(0, 10)} ${end
-      .toISOString()
-      .slice(11, 19)}","notes":"","start_type_id":"0","end_type_id":"0"}}`,
+    body: `{"0":{"user_id":${userId},"task_id":${taskId},"start_time_timezone":"Europe/Vienna","end_time_timezone":"Europe/Vienna","start_time":"${start}","end_time":"${end}","notes":"","start_type_id":"0","end_type_id":"0"}}`,
     method: 'POST',
   });
 
@@ -79,7 +65,7 @@ const main = async () => {
       type: 'number',
       name: 'taskId',
       message: 'Task id:',
-      default: 176,
+      default: 179, // HOMEOFFICE
     },
     {
       type: 'input',
@@ -112,35 +98,43 @@ const main = async () => {
       holidays.indexOf(isoDay) < 0
     ) {
       console.log(`adding ${isoDay}`);
+      const start = 7.5 * 60 + Math.round(Math.random() * 30); // 7:50 + 0-30 min
+      const startH = Math.floor(start / 60);
+      const startM = start - startH * 60;
+
+      // eslint-disable-next-line prettier/prettier
+      const startDateTime = `${isoDay} ${`${startH}`.padStart(2, '0')}:${`${startM}`.padStart(2, '0')}:00`;
+
+      const end = start + 8.75 * 60;
+      const endH = Math.floor(end / 60);
+      const endM = end - endH * 60;
+
+      // eslint-disable-next-line prettier/prettier
+      const endDateTime = `${isoDay} ${`${endH}`.padStart(2, '0')}:${`${endM}`.padStart(2, '0')}:00`;
+
       if (currentDate.getDay() < 5) {
         await addTime(
           token,
           userId,
           taskId,
-          new Date(`${isoDay} 07:30`),
-          new Date(`${isoDay} 11:30`),
+          startDateTime,
+          `${isoDay} 12:00:00`,
         );
         await addTime(
           token,
           userId,
           pauseId,
-          new Date(`${isoDay} 11:30`),
-          new Date(`${isoDay} 12:00`),
+          `${isoDay} 12:00:00`,
+          `${isoDay} 12:30:00`,
         );
-        await addTime(
-          token,
-          userId,
-          taskId,
-          new Date(`${isoDay} 12:00`),
-          new Date(`${isoDay} 16:15`),
-        );
+        await addTime(token, userId, taskId, `${isoDay} 12:30:00`, endDateTime);
       } else {
         await addTime(
           token,
           userId,
           taskId,
-          new Date(`${isoDay} 08:00`),
-          new Date(`${isoDay} 13:30`),
+          `${isoDay} 08:00:00`,
+          `${isoDay} 13:30:00`,
         );
       }
     }
