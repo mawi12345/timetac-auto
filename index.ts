@@ -2,7 +2,19 @@
 import { prompt } from 'inquirer';
 import fetch from 'node-fetch';
 
-const holidays = ['2022-02-15'];
+const holidays = [
+  '2023-03-10',
+  '2023-04-07',
+  '2023-04-10',
+  '2023-05-01',
+  '2023-05-11',
+  '2023-05-12',
+  '2023-05-18',
+  '2023-05-19',
+  '2023-05-29',
+  '2023-06-08',
+  '2023-06-09',
+];
 
 const nextDay = (date: Date): Date => {
   const nextDay = new Date(date);
@@ -60,12 +72,14 @@ const main = async () => {
       name: 'userId',
       message: 'User id:',
       default: 56,
+      // 41 = Gernot
     },
     {
       type: 'number',
       name: 'taskId',
       message: 'Task id:',
-      default: 179, // HOMEOFFICE
+      default: 176, // Entwicklung
+      // default: 179, // HOMEOFFICE
     },
     {
       type: 'input',
@@ -103,14 +117,20 @@ const main = async () => {
       const startM = start - startH * 60;
 
       // eslint-disable-next-line prettier/prettier
-      const startDateTime = `${isoDay} ${`${startH}`.padStart(2, '0')}:${`${startM}`.padStart(2, '0')}:00`;
+      const startDateTime = `${isoDay} ${`${startH}`.padStart(
+        2,
+        '0',
+      )}:${`${startM}`.padStart(2, '0')}:00`;
 
       const end = start + 8.75 * 60;
       const endH = Math.floor(end / 60);
       const endM = end - endH * 60;
 
       // eslint-disable-next-line prettier/prettier
-      const endDateTime = `${isoDay} ${`${endH}`.padStart(2, '0')}:${`${endM}`.padStart(2, '0')}:00`;
+      const endDateTime = `${isoDay} ${`${endH}`.padStart(
+        2,
+        '0',
+      )}:${`${endM}`.padStart(2, '0')}:00`;
 
       if (currentDate.getDay() < 5) {
         await addTime(
