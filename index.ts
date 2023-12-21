@@ -1,165 +1,285 @@
-/* eslint-disable no-console */
+/* eslint-disable no-console, @typescript-eslint/no-non-null-assertion, @typescript-eslint/naming-convention */
+import Api, {
+  RequestParamsBuilder,
+  TimeTracking,
+} from '@timetac/js-client-library';
+// import fs from 'fs/promises';
+// import { existsSync } from 'fs';
+import yargs from 'yargs';
+import { hideBin } from 'yargs/helpers';
 import { prompt } from 'inquirer';
-import fetch from 'node-fetch';
-
-const holidays = [
-  '2023-03-10',
-  '2023-04-07',
-  '2023-04-10',
-  '2023-05-01',
-  '2023-05-11',
-  '2023-05-12',
-  '2023-05-18',
-  '2023-05-19',
-  '2023-05-29',
-  '2023-06-08',
-  '2023-06-09',
-];
-
-const nextDay = (date: Date): Date => {
-  const nextDay = new Date(date);
-  nextDay.setDate(date.getDate() + 1);
-  return nextDay;
-};
-
-const addTime = (
-  token: string,
-  userId: number,
-  taskId: number,
-  start: string,
-  end: string,
-) =>
-  fetch('https://go.timetac.com/imcgmbh/userapi/v3/timeTrackings/create/', {
-    headers: {
-      accept: 'application/json',
-      'accept-language': 'de-DE,de;q=0.9,en;q=0.8,en-US;q=0.7',
-      authorization: `Bearer ${token}`,
-      'cache-control': 'no-cache',
-      'content-type': 'application/json',
-      pragma: 'no-cache',
-      'sec-ch-ua':
-        '"Google Chrome";v="87", " Not;A Brand";v="99", "Chromium";v="87"',
-      'sec-ch-ua-mobile': '?0',
-      'sec-fetch-dest': 'empty',
-      'sec-fetch-mode': 'cors',
-      'sec-fetch-site': 'same-origin',
-      'tt-analytics-action': 'create',
-      'tt-analytics-description': 'window',
-      'tt-analytics-endpoint': 'timetrackings',
-      'tt-analytics-grid': 'calendar',
-      'x-requested-with': 'XMLHttpRequest',
-    },
-    body: `{"0":{"user_id":${userId},"task_id":${taskId},"start_time_timezone":"Europe/Vienna","end_time_timezone":"Europe/Vienna","start_time":"${start}","end_time":"${end}","notes":"","start_type_id":"0","end_type_id":"0"}}`,
-    method: 'POST',
-  });
+import {
+  MinTrack,
+  currentYear,
+  getRandomSpan,
+  isFrDay,
+  isWorkDay,
+  readableTimeTracking,
+  weekday,
+} from './utils';
 
 const main = async () => {
-  const {
-    start,
-    end,
-    taskId,
-    userId,
-    token,
-  }: {
-    start: string;
-    end: string;
-    taskId: number;
-    userId: number;
-    token: string;
-  } = await prompt([
-    {
-      type: 'number',
-      name: 'userId',
-      message: 'User id:',
-      default: 56,
-      // 41 = Gernot
-    },
-    {
-      type: 'number',
-      name: 'taskId',
-      message: 'Task id:',
-      default: 176, // Entwicklung
-      // default: 179, // HOMEOFFICE
-    },
-    {
-      type: 'input',
-      name: 'token',
-      message: 'Token:',
-      default: '12345678123456781234567812345678',
-    },
-    {
-      type: 'input',
-      name: 'start',
-      message: 'Start date:',
-      default: new Date().toISOString().slice(0, 10),
-    },
-    {
-      type: 'input',
-      name: 'end',
-      message: 'End date:',
-      default: new Date().toISOString().slice(0, 10),
-    },
-  ]);
-  const pauseId = 9;
-  const startDate = new Date(start);
-  const endDate = new Date(end);
-  let currentDate = startDate;
-  do {
-    const isoDay = currentDate.toISOString().slice(0, 10);
-    if (
-      currentDate.getDay() > 0 &&
-      currentDate.getDay() < 6 &&
-      holidays.indexOf(isoDay) < 0
-    ) {
-      console.log(`adding ${isoDay}`);
-      const start = 7.5 * 60 + Math.round(Math.random() * 30); // 7:50 + 0-30 min
-      const startH = Math.floor(start / 60);
-      const startM = start - startH * 60;
+  const argv = await yargs(hideBin(process.argv))
+    .options({
+      account: {
+        alias: 'a',
+        type: 'string',
+        description: 'Account name',
+        demandOption: true,
+      },
+      token: {
+        alias: 't',
+        type: 'string',
+        description: 'token (JWT)',
+        demandOption: true,
+      },
+      verbose: {
+        alias: 'v',
+        type: 'count',
+        default: 0,
+        description: 'Run with verbose logging',
+      },
+      taskId: {
+        alias: 'i',
+        type: 'number',
+        default: 176, // entwicklung
+        description: 'Task ID for work',
+      },
+      pauseId: {
+        alias: 'p',
+        type: 'number',
+        default: 9, // pause
+        description: 'Task ID for pause',
+      },
+      includeToday: {
+        type: 'boolean',
+        default: false,
+        description: 'Include today in missing days',
+      },
+      single: {
+        type: 'boolean',
+        default: false,
+        description: 'ask for each day',
+      },
+    })
+    .env('TA')
+    .parse();
 
-      // eslint-disable-next-line prettier/prettier
-      const startDateTime = `${isoDay} ${`${startH}`.padStart(
+  const user = JSON.parse(
+    Buffer.from(argv.token.split('.')[1], 'base64').toString(),
+  );
+
+  const tokenLifetime = user.exp - Math.round(Date.now() / 1000);
+
+  // let the token expire 10 minutes before it actually does
+  // so we don't have to deal with token refresh
+  if (tokenLifetime < 10 * 60) {
+    throw new Error(`Token expired ${Math.round(tokenLifetime / -60)}min ago`);
+  }
+
+  if (argv.verbose > 1) {
+    console.log(
+      `Logged in with token ${JSON.stringify(
+        user,
+        null,
         2,
-        '0',
-      )}:${`${startM}`.padStart(2, '0')}:00`;
+      )} for next ${tokenLifetime} seconds`,
+    );
+  } else if (argv.verbose) {
+    console.log(
+      `Logged in with "${user.sub}" for the next ${Math.round(
+        tokenLifetime / 60,
+      )}min`,
+    );
+  }
 
-      const end = start + 8.75 * 60;
-      const endH = Math.floor(end / 60);
-      const endM = end - endH * 60;
+  const api = new Api({
+    account: argv.account,
+    accessToken: argv.token,
+  });
 
-      // eslint-disable-next-line prettier/prettier
-      const endDateTime = `${isoDay} ${`${endH}`.padStart(
-        2,
-        '0',
-      )}:${`${endM}`.padStart(2, '0')}:00`;
+  // if (!existsSync('timetrackings.json')) {
+  // console.log('Downloading timetrackings.json');
+  const res = await api.timeTrackings.read(
+    new RequestParamsBuilder<TimeTracking>()
+      .limit(1000)
+      .orderBy('id', 'desc')
+      .build(),
+  );
+  const Results = res.Results;
+  //   await fs.writeFile('timetrackings.json', JSON.stringify(res, null, 2));
+  // }
 
-      if (currentDate.getDay() < 5) {
-        await addTime(
-          token,
-          userId,
-          taskId,
-          startDateTime,
-          `${isoDay} 12:00:00`,
-        );
-        await addTime(
-          token,
-          userId,
-          pauseId,
-          `${isoDay} 12:00:00`,
-          `${isoDay} 12:30:00`,
-        );
-        await addTime(token, userId, taskId, `${isoDay} 12:30:00`, endDateTime);
-      } else {
-        await addTime(
-          token,
-          userId,
-          taskId,
-          `${isoDay} 08:00:00`,
-          `${isoDay} 13:30:00`,
+  // if (!existsSync('user.json')) {
+  //   console.log('Downloading user.json');
+  const meRes = await api.users.readMe();
+  const me = meRes.Results;
+  //   await fs.writeFile('user.json', JSON.stringify(meRes, null, 2));
+  // }
+
+  // const tasksRes = await api.tasks.read();
+  // await fs.writeFile('tasks.json', JSON.stringify(tasksRes, null, 2));
+
+  // const { Results } = JSON.parse(
+  //   await fs.readFile('timetrackings.json', 'utf-8'),
+  // ) as LibraryReturn<'timeTrackings', TimeTracking[]>;
+
+  // const me = (JSON.parse(
+  //   await fs.readFile('user.json', 'utf-8'),
+  // ) as LibraryReturn<'usersReadMe', UserReadMe>).Results;
+
+  if (argv.verbose > 1)
+    console.log(`Logged in with user ${JSON.stringify(me, null, 2)}`);
+
+  const days: { [key: string]: TimeTracking[] } = {};
+  for (const tt of Results) {
+    const date = tt.start_time!.slice(0, 10);
+    if (!days[date]) {
+      days[date] = [];
+    }
+    days[date].push(tt);
+  }
+  for (const d of Object.values(days)) {
+    d.sort((a, b) => a.start_time!.localeCompare(b.start_time!));
+  }
+
+  const daysSorted = Object.keys(days)
+    .filter((d) => d.startsWith(currentYear))
+    .sort();
+
+  if (argv.verbose > 1) {
+    for (const date of daysSorted) {
+      console.log(`\n${date} [${weekday[new Date(date).getDay()]}]`);
+      console.log(`  ${days[date].map(readableTimeTracking).join('\n  ')}`);
+    }
+  }
+
+  const allDays = [];
+  const currentDate = new Date(`${currentYear}-01-01`);
+  while (
+    currentDate.toISOString().slice(0, 10) !==
+    new Date().toISOString().slice(0, 10)
+  ) {
+    // next day
+    currentDate.setUTCDate(currentDate.getUTCDate() + 1);
+    allDays.push(currentDate.toISOString().slice(0, 10));
+  }
+
+  if (!argv.includeToday) {
+    allDays.pop();
+  }
+
+  const allWorkDays = allDays.filter(isWorkDay);
+
+  const missingDays = allWorkDays.filter((d) => !days[d]);
+
+  const proposal: { [day: string]: MinTrack[] } = {};
+
+  for (const missingDay of missingDays) {
+    if (!isWorkDay(missingDay)) {
+      throw new Error(`Not a work day: ${missingDay}`);
+    }
+
+    if (isFrDay(missingDay)) {
+      const { startTime, endTime } = getRandomSpan(5.5);
+      proposal[missingDay] = [
+        {
+          user_id: me.id,
+          task_id: argv.taskId,
+          start_time: `${missingDay} ${startTime}`,
+          end_time: `${missingDay} ${endTime}`,
+        },
+      ];
+    } else {
+      const { startTime, endTime } = getRandomSpan();
+      proposal[missingDay] = [
+        {
+          user_id: me.id,
+          task_id: argv.taskId,
+          start_time: `${missingDay} ${startTime}`,
+          end_time: `${missingDay} 12:00:00`,
+        },
+        {
+          user_id: me.id,
+          task_id: argv.pauseId,
+          start_time: `${missingDay} 12:00:00`,
+          end_time: `${missingDay} 12:30:00`,
+        },
+        {
+          user_id: me.id,
+          task_id: argv.taskId,
+          start_time: `${missingDay} 12:30:00`,
+          end_time: `${missingDay} ${endTime}`,
+        },
+      ];
+    }
+  }
+
+  const proposalSorted = Object.keys(proposal).sort();
+
+  if (proposalSorted.length > 0) {
+    if (argv.verbose) {
+      console.log('\nMissing days:');
+      for (const date of proposalSorted) {
+        console.log(`\n${date} [${weekday[new Date(date).getDay()]}]`);
+        console.log(
+          `  ${proposal[date].map(readableTimeTracking).join('\n  ')}`,
         );
       }
+    } else {
+      console.log(`\nMissing days: \n  ${proposalSorted.join('\n  ')}`);
     }
-    currentDate = nextDay(currentDate);
-  } while (currentDate < endDate);
+    console.log();
+    if (
+      !(
+        await prompt({
+          name: 'confirm',
+          message: `Add ${missingDays.length} missing days?`,
+          type: 'confirm',
+          default: false,
+        })
+      ).confirm
+    ) {
+      return -1;
+    }
+
+    for (const date of proposalSorted) {
+      if (argv.single) {
+        if (
+          !(
+            await prompt({
+              name: 'confirm',
+              message: `Add ${date} [${weekday[new Date(date).getDay()]}]`,
+              type: 'confirm',
+              default: false,
+            })
+          ).confirm
+        ) {
+          return -1;
+        }
+      } else {
+        console.log(`\n➡️  ${date} [${weekday[new Date(date).getDay()]}]`);
+      }
+      for (const tt of proposal[date]) {
+        await api.timeTrackings.create({
+          ...tt,
+          start_time_timezone: 'Europe/Vienna',
+          end_time_timezone: 'Europe/Vienna',
+          notes: '',
+          start_type_id: 0,
+          end_type_id: 0,
+        });
+        await new Promise((resolve) =>
+          setTimeout(resolve, 500 + Math.random() * 1000),
+        );
+        console.log(`✅   ${readableTimeTracking(tt)}`);
+      }
+    }
+  } else {
+    console.log('No missing records found');
+  }
 };
 
-main().catch((e) => console.error(e));
+main().catch((err) => {
+  console.error(err);
+});
