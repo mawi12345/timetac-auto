@@ -1,5 +1,9 @@
 /* eslint-disable no-console, @typescript-eslint/no-non-null-assertion, @typescript-eslint/naming-convention */
-import { TimeTracking } from '@timetac/js-client-library';
+import Api, {
+  RequestParamsBuilder,
+  TimeTracking,
+  UserReadMe,
+} from '@timetac/js-client-library';
 
 export const weekday = ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa'];
 export const currentYear = new Date().toISOString().slice(0, 4);
@@ -70,7 +74,7 @@ export const getRandomSpan = (duration = 8.75) => {
   return { startTime, endTime };
 };
 
-export const getAllDays = (currentYear: string) => {
+export const getAllDays = () => {
   const allDays: string[] = [];
   const currentDate = new Date(`${currentYear}-01-01`);
   while (
@@ -82,4 +86,95 @@ export const getAllDays = (currentYear: string) => {
     allDays.push(currentDate.toISOString().slice(0, 10));
   }
   return allDays;
+};
+
+export const setupApi = async (argv: {
+  token: string;
+  verbose: number;
+  account: string;
+}) => {
+  const user = JSON.parse(
+    Buffer.from(argv.token.split('.')[1], 'base64').toString(),
+  );
+
+  const tokenLifetime = user.exp - Math.round(Date.now() / 1000);
+
+  // let the token expire 10 minutes before it actually does
+  // so we don't have to deal with token refresh
+  if (tokenLifetime < 10 * 60) {
+    throw new Error(`Token expired ${Math.round(tokenLifetime / -60)}min ago`);
+  }
+
+  if (argv.verbose > 1) {
+    console.log(
+      `Logged in with token ${JSON.stringify(
+        user,
+        null,
+        2,
+      )} for next ${tokenLifetime} seconds`,
+    );
+  } else if (argv.verbose) {
+    console.log(
+      `Logged in with "${user.sub}" for the next ${Math.round(
+        tokenLifetime / 60,
+      )}min`,
+    );
+  }
+
+  const api = new Api({
+    account: argv.account,
+    accessToken: argv.token,
+  });
+
+  const meRes = await api.users.readMe();
+  const me = meRes.Results;
+
+  if (argv.verbose > 1)
+    console.log(`Logged in with user ${JSON.stringify(me, null, 2)}`);
+
+  return { api, me };
+};
+
+export const getDays = async (
+  api: Api,
+  me: UserReadMe,
+  argv: { verbose: number },
+) => {
+  const res = await api.timeTrackings.read(
+    new RequestParamsBuilder<TimeTracking>()
+      .limit(1000)
+      .orderBy('id', 'desc')
+      .build(),
+  );
+  const Results = res.Results;
+
+  if (argv.verbose > 1)
+    console.log(`Logged in with user ${JSON.stringify(me, null, 2)}`);
+
+  // group by day and only keep current year
+  const days: { [key: string]: TimeTracking[] } = {};
+  for (const tt of Results) {
+    const date = tt.start_time!.slice(0, 10);
+    if (!date.startsWith(currentYear)) {
+      continue;
+    }
+    if (!days[date]) {
+      days[date] = [];
+    }
+    days[date].push(tt);
+  }
+  for (const d of Object.values(days)) {
+    d.sort((a, b) => a.start_time!.localeCompare(b.start_time!));
+  }
+
+  // print the whole year
+  const daysSorted = Object.keys(days).sort();
+  if (argv.verbose > 1) {
+    for (const date of daysSorted) {
+      console.log(`\n${date} [${weekday[new Date(date).getDay()]}]`);
+      console.log(`  ${days[date].map(readableTimeTracking).join('\n  ')}`);
+    }
+  }
+
+  return days;
 };
