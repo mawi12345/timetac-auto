@@ -3,6 +3,7 @@ import yargs from 'yargs';
 import { hideBin } from 'yargs/helpers';
 import { add } from './add';
 import { homeoffice } from './homeoffice';
+import { approve } from './approve';
 
 yargs(hideBin(process.argv))
   .env('TA')
@@ -79,6 +80,21 @@ yargs(hideBin(process.argv))
         }),
     (argv) => {
       homeoffice(argv).catch((err) => {
+        console.error(err);
+      });
+    },
+  )
+  .command(
+    'approve',
+    'approve all changes',
+    (s) =>
+      s.positional('count', {
+        type: 'number',
+        description: 'number of time trackings to approve',
+        default: 0,
+      }),
+    (argv) => {
+      approve(argv).catch((err) => {
         console.error(err);
       });
     },

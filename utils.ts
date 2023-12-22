@@ -143,6 +143,7 @@ export const getDays = async (
   const res = await api.timeTrackings.read(
     new RequestParamsBuilder<TimeTracking>()
       .limit(1000)
+      .eq('user_id', me.id)
       .orderBy('id', 'desc')
       .build(),
   );
