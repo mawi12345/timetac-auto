@@ -69,3 +69,17 @@ export const getRandomSpan = (duration = 8.75) => {
   )}:00`;
   return { startTime, endTime };
 };
+
+export const getAllDays = (currentYear: string) => {
+  const allDays: string[] = [];
+  const currentDate = new Date(`${currentYear}-01-01`);
+  while (
+    currentDate.toISOString().slice(0, 10) !==
+    new Date().toISOString().slice(0, 10)
+  ) {
+    // next day
+    currentDate.setUTCDate(currentDate.getUTCDate() + 1);
+    allDays.push(currentDate.toISOString().slice(0, 10));
+  }
+  return allDays;
+};

@@ -11,6 +11,7 @@ import { prompt } from 'inquirer';
 import {
   MinTrack,
   currentYear,
+  getAllDays,
   getRandomSpan,
   isFrDay,
   isWorkDay,
@@ -51,6 +52,11 @@ const main = async () => {
         default: 9, // pause
         description: 'Task ID for pause',
       },
+      homeofficeId: {
+        type: 'number',
+        default: 179, // homeoffice
+        description: 'Task ID for homeoffice',
+      },
       includeToday: {
         type: 'boolean',
         default: false,
@@ -60,6 +66,11 @@ const main = async () => {
         type: 'boolean',
         default: false,
         description: 'ask for each day',
+      },
+      homeoffice: {
+        type: 'number',
+        default: 0,
+        description: 'enusre homeoffice days',
       },
     })
     .env('TA')
@@ -131,9 +142,13 @@ const main = async () => {
   if (argv.verbose > 1)
     console.log(`Logged in with user ${JSON.stringify(me, null, 2)}`);
 
+  // group by day and only keep current year
   const days: { [key: string]: TimeTracking[] } = {};
   for (const tt of Results) {
     const date = tt.start_time!.slice(0, 10);
+    if (!date.startsWith(currentYear)) {
+      continue;
+    }
     if (!days[date]) {
       days[date] = [];
     }
@@ -143,10 +158,8 @@ const main = async () => {
     d.sort((a, b) => a.start_time!.localeCompare(b.start_time!));
   }
 
-  const daysSorted = Object.keys(days)
-    .filter((d) => d.startsWith(currentYear))
-    .sort();
-
+  // print the whole year
+  const daysSorted = Object.keys(days).sort();
   if (argv.verbose > 1) {
     for (const date of daysSorted) {
       console.log(`\n${date} [${weekday[new Date(date).getDay()]}]`);
@@ -154,32 +167,22 @@ const main = async () => {
     }
   }
 
-  const allDays = [];
-  const currentDate = new Date(`${currentYear}-01-01`);
-  while (
-    currentDate.toISOString().slice(0, 10) !==
-    new Date().toISOString().slice(0, 10)
-  ) {
-    // next day
-    currentDate.setUTCDate(currentDate.getUTCDate() + 1);
-    allDays.push(currentDate.toISOString().slice(0, 10));
-  }
+  // generate a list of all days in the current year
+  const allDays = getAllDays(currentYear);
 
   if (!argv.includeToday) {
     allDays.pop();
   }
 
+  // filter out all non-workdays
   const allWorkDays = allDays.filter(isWorkDay);
 
+  // find missing days
   const missingDays = allWorkDays.filter((d) => !days[d]);
 
+  // generate a proposal for missing days
   const proposal: { [day: string]: MinTrack[] } = {};
-
   for (const missingDay of missingDays) {
-    if (!isWorkDay(missingDay)) {
-      throw new Error(`Not a work day: ${missingDay}`);
-    }
-
     if (isFrDay(missingDay)) {
       const { startTime, endTime } = getRandomSpan(5.5);
       proposal[missingDay] = [
@@ -214,9 +217,9 @@ const main = async () => {
       ];
     }
   }
-
   const proposalSorted = Object.keys(proposal).sort();
 
+  // if there are missing days, ask if they should be added
   if (proposalSorted.length > 0) {
     if (argv.verbose) {
       console.log('\nMissing days:');
