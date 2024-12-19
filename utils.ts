@@ -99,9 +99,9 @@ export const setupApi = async (argv: {
 
   const tokenLifetime = user.exp - Math.round(Date.now() / 1000);
 
-  // let the token expire 10 minutes before it actually does
+  // let the token expire 5 minutes before it actually does
   // so we don't have to deal with token refresh
-  if (tokenLifetime < 10 * 60) {
+  if (tokenLifetime < 5 * 60) {
     throw new Error(`Token expired ${Math.round(tokenLifetime / -60)}min ago`);
   }
 
