@@ -85,7 +85,7 @@ yargs(hideBin(process.argv))
     },
   )
   .command(
-    'approve',
+    'approve <count>',
     'approve all changes',
     (s) =>
       s.positional('count', {
