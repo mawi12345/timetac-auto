@@ -12,6 +12,7 @@ export const homeoffice = async (argv: {
   homeofficeId: number;
   taskId: number;
   pauseId: number;
+  year: string;
 }) => {
   const { api, me } = await setupApi(argv);
 

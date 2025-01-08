@@ -6,7 +6,6 @@ import Api, {
 } from '@timetac/js-client-library';
 
 export const weekday = ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa'];
-export const currentYear = new Date().toISOString().slice(0, 4);
 
 export const readableTaskId = (taskId: number) => {
   if (taskId === 4) {
@@ -74,9 +73,9 @@ export const getRandomSpan = (duration = 8.75) => {
   return { startTime, endTime };
 };
 
-export const getAllDays = () => {
+export const getAllDays = (year: string) => {
   const allDays: string[] = [];
-  const currentDate = new Date(`${currentYear}-01-01`);
+  const currentDate = new Date(`${year}-01-01`);
   while (
     currentDate.toISOString().slice(0, 10) !==
     new Date().toISOString().slice(0, 10)
@@ -138,7 +137,7 @@ export const setupApi = async (argv: {
 export const getDays = async (
   api: Api,
   me: UserReadMe,
-  argv: { verbose: number },
+  argv: { verbose: number; year: string },
 ) => {
   const res = await api.timeTrackings.read(
     new RequestParamsBuilder<TimeTracking>()
@@ -156,7 +155,7 @@ export const getDays = async (
   const days: { [key: string]: TimeTracking[] } = {};
   for (const tt of Results) {
     const date = tt.start_time!.slice(0, 10);
-    if (!date.startsWith(currentYear)) {
+    if (!date.startsWith(argv.year)) {
       continue;
     }
     if (!days[date]) {

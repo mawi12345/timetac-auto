@@ -20,13 +20,14 @@ export const add = async (argv: {
   taskId: number;
   pauseId: number;
   single: boolean;
+  year: string;
 }) => {
   const { api, me } = await setupApi(argv);
 
   const days = await getDays(api, me, argv);
 
   // generate a list of all days in the current year
-  const allDays = getAllDays();
+  const allDays = getAllDays(argv.year);
 
   if (!argv.includeToday) {
     allDays.pop();

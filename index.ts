@@ -43,6 +43,11 @@ yargs(hideBin(process.argv))
       default: 9, // pause
       description: 'Task ID for pause',
     },
+    year: {
+      type: 'string',
+      default: new Date().getFullYear().toString(),
+      description: 'Year to convert',
+    },
   })
   .command(
     'add',
